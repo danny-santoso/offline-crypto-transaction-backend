@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import tokenRoutes from './routes/tokenRoutes';
+import keyRoutes from './routes/keyRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -35,13 +37,24 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API routes placeholder
+// API routes
 app.get('/api', (req, res) => {
   res.json({
     message: 'Offline Crypto Transactions API',
     version: '1.0.0',
+    endpoints: {
+      balance: 'GET /api/balance/:address',
+      purchaseTokens: 'POST /api/purchase-tokens',
+      redeemTokens: 'POST /api/redeem-tokens',
+      publicKeys: 'GET /api/public-keys',
+      validateSignature: 'POST /api/validate-signature'
+    }
   });
 });
+
+// Mount API routes
+app.use('/api', tokenRoutes);
+app.use('/api', keyRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
