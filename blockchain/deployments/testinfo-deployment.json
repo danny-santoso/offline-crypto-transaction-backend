@@ -1,0 +1,7 @@
+{
+  "contractAddress": "0x1234567890123456789012345678901234567890",
+  "network": "testinfo",
+  "chainId": "1337",
+  "deploymentTime": "2025-07-18T13:19:12.056Z",
+  "blockNumber": 12345
+}

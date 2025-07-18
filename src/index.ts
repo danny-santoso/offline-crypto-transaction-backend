@@ -5,6 +5,10 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import tokenRoutes from './routes/tokenRoutes';
 import keyRoutes from './routes/keyRoutes';
+import deploymentRoutes from './routes/deploymentRoutes';
+import authRoutes from './routes/authRoutes';
+import mobileRoutes from './routes/mobileRoutes';
+import syncRoutes from './routes/syncRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -47,7 +51,13 @@ app.get('/api', (req, res) => {
       purchaseTokens: 'POST /api/purchase-tokens',
       redeemTokens: 'POST /api/redeem-tokens',
       publicKeys: 'GET /api/public-keys',
-      validateSignature: 'POST /api/validate-signature'
+      validateSignature: 'POST /api/validate-signature',
+      deploymentStatus: 'GET /api/deployment/status',
+      deploymentInfo: 'GET /api/deployment/info/:network',
+      deploymentConfig: 'GET /api/deployment/config/:network',
+      deploymentReport: 'GET /api/deployment/report',
+      deploymentEvents: 'GET /api/deployment/events',
+      validateDeployment: 'POST /api/deployment/validate/:network'
     }
   });
 });
@@ -55,6 +65,10 @@ app.get('/api', (req, res) => {
 // Mount API routes
 app.use('/api', tokenRoutes);
 app.use('/api', keyRoutes);
+app.use('/api/deployment', deploymentRoutes);
+app.use('/auth', authRoutes);
+app.use('/mobile', mobileRoutes);
+app.use('/mobile/sync', syncRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

@@ -10,7 +10,24 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint src/**/*.ts",
-    "lint:fix": "eslint src/**/*.ts --fix"
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "deploy:local": "cd blockchain && npx hardhat run scripts/deploy.ts --network localhost",
+    "deploy:sepolia": "cd blockchain && npx hardhat run scripts/deploy.ts --network sepolia",
+    "deploy:goerli": "cd blockchain && npx hardhat run scripts/deploy.ts --network goerli",
+    "verify:sepolia": "cd blockchain && npx hardhat run scripts/verify.ts --network sepolia",
+    "verify:goerli": "cd blockchain && npx hardhat run scripts/verify.ts --network goerli",
+    "setup-otm:local": "cd blockchain && npx hardhat run scripts/setup-otm.ts --network localhost",
+    "setup-otm:sepolia": "cd blockchain && npx hardhat run scripts/setup-otm.ts --network sepolia",
+    "setup-otm:goerli": "cd blockchain && npx hardhat run scripts/setup-otm.ts --network goerli",
+    "blockchain:compile": "cd blockchain && npx hardhat compile",
+    "blockchain:test": "cd blockchain && npx hardhat test",
+    "blockchain:node": "cd blockchain && npx hardhat node",
+    "test:pipeline": "ts-node scripts/test-pipeline.ts",
+    "test:pipeline:quick": "ts-node scripts/test-pipeline.ts --quick",
+    "test:integration": "jest --testPathPattern=integration --runInBand",
+    "test:unit": "jest --testPathPattern=src/__tests__/(?!integration)",
+    "test:e2e": "jest --testPathPattern=tokenLifecycle --runInBand",
+    "test:performance": "jest --testPathPattern=apiPerformance --runInBand"
   },
   "keywords": [
     "cryptocurrency",
@@ -40,11 +57,13 @@
     "typescript": "^5.2.2"
   },
   "dependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.5",
     "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
     "web3": "^4.2.2"
   }
 }
