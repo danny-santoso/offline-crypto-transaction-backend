@@ -1,15 +1,20 @@
 import { Web3 } from 'web3';
 import dotenv from 'dotenv';
+import { BlockchainErrorHandler, TransactionRecoveryManager, ErrorType } from './errorHandler';
 
 dotenv.config();
 
 export class Web3Service {
   private web3: Web3;
   private networkUrl: string;
+  private errorHandler: BlockchainErrorHandler;
+  private recoveryManager: TransactionRecoveryManager;
 
   constructor() {
     this.networkUrl = this.getNetworkUrl();
     this.web3 = new Web3(this.networkUrl);
+    this.errorHandler = new BlockchainErrorHandler();
+    this.recoveryManager = new TransactionRecoveryManager(this.errorHandler);
   }
 
   private getNetworkUrl(): string {
@@ -138,48 +143,39 @@ export class Web3Service {
   }
 
   /**
-   * Send a transaction with automatic gas estimation and retry logic
-   * Requirements: 7.2, 7.3, 9.2, 9.5
+   * Send a transaction with enhanced error handling and retry logic
+   * Requirements: 7.2, 7.3, 7.4, 7.5, 9.2, 9.5
    */
   public async sendTransaction(transaction: any, retries: number = 3): Promise<any> {
-    let lastError: Error | null = null;
+    const transactionId = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
+    return await this.errorHandler.executeWithRetry(
+      async () => {
         // Estimate gas if not provided
         if (!transaction.gas) {
           transaction.gas = await this.estimateGas(transaction);
         }
 
-        // Get current gas price if not provided
+        // Get optimal gas price based on network conditions
         if (!transaction.gasPrice) {
-          const baseGasPrice = await this.getGasPrice();
-          // Add 10% buffer for faster confirmation
-          transaction.gasPrice = (baseGasPrice * BigInt(110)) / BigInt(100);
+          const congestion = await this.getNetworkCongestion();
+          transaction.gasPrice = await this.getOptimalGasPrice(
+            congestion.level === 'high' ? 'fast' : 'standard'
+          );
         }
 
         // Send the transaction
         const txHash = await this.web3.eth.sendTransaction(transaction);
         return txHash;
-
-      } catch (error) {
-        lastError = error as Error;
-        console.warn(`Transaction attempt ${attempt} failed:`, error);
-        
-        if (attempt < retries) {
-          // Wait before retry with exponential backoff
-          const delay = Math.pow(2, attempt) * 1000;
-          await new Promise(resolve => setTimeout(resolve, delay));
-          
-          // Increase gas price for retry
-          if (transaction.gasPrice) {
-            transaction.gasPrice = (BigInt(transaction.gasPrice) * BigInt(120)) / BigInt(100);
-          }
-        }
-      }
-    }
-
-    throw new Error(`Transaction failed after ${retries} attempts: ${lastError?.message}`);
+      },
+      { 
+        transactionId,
+        method: 'sendTransaction',
+        to: transaction.to,
+        value: transaction.value 
+      },
+      { maxRetries: retries }
+    );
   }
 
   /**
@@ -410,30 +406,201 @@ export class Web3Service {
   }
 
   /**
-   * Helper method for transaction retry logic
+   * Helper method for transaction retry logic with enhanced error handling
    * Requirements: 7.4, 7.5
    */
   private async sendTransactionWithRetry(
     transactionFn: () => Promise<any>,
     retries: number
   ): Promise<any> {
-    let lastError: Error | null = null;
+    const transactionId = `tx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        return await transactionFn();
-      } catch (error) {
-        lastError = error as Error;
-        console.warn(`Transaction attempt ${attempt} failed:`, error);
-        
-        if (attempt < retries) {
-          // Wait before retry with exponential backoff
-          const delay = Math.pow(2, attempt) * 1000;
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-      }
-    }
+    return await this.errorHandler.executeWithRetry(
+      transactionFn,
+      { 
+        transactionId,
+        method: 'sendTransactionWithRetry'
+      },
+      { maxRetries: retries }
+    );
+  }
 
-    throw new Error(`Transaction failed after ${retries} attempts: ${lastError?.message}`);
+  /**
+   * Get error handler instance for external access
+   * Requirements: 7.4, 7.5
+   */
+  public getErrorHandler(): BlockchainErrorHandler {
+    return this.errorHandler;
+  }
+
+  /**
+   * Get recovery manager instance for external access
+   * Requirements: 7.4, 7.5
+   */
+  public getRecoveryManager(): TransactionRecoveryManager {
+    return this.recoveryManager;
+  }
+
+  /**
+   * Process pending transaction recoveries
+   * Requirements: 7.4, 7.5
+   */
+  public async processPendingRecoveries(): Promise<{
+    recovered: string[];
+    failed: string[];
+    stillPending: string[];
+  }> {
+    return await this.recoveryManager.processPendingRecoveries(
+      async (transaction) => {
+        return await this.sendTransaction(transaction, 1);
+      }
+    );
+  }
+
+  /**
+   * Add failed transaction for recovery
+   * Requirements: 7.4, 7.5
+   */
+  public addFailedTransactionForRecovery(
+    transactionId: string,
+    transaction: any,
+    error: Error
+  ): void {
+    const blockchainError = this.errorHandler.parseError(error, {
+      transactionId,
+      transaction: {
+        to: transaction.to,
+        value: transaction.value,
+        gasPrice: transaction.gasPrice
+      }
+    });
+
+    this.recoveryManager.addFailedTransaction(transactionId, transaction, blockchainError);
+  }
+
+  /**
+   * Get comprehensive error statistics
+   * Requirements: 7.5
+   */
+  public getErrorStatistics(timeWindow?: number) {
+    return this.errorHandler.getErrorStatistics(timeWindow);
+  }
+
+  /**
+   * Get recovery status
+   * Requirements: 7.4, 7.5
+   */
+  public getRecoveryStatus() {
+    return this.recoveryManager.getRecoveryStatus();
+  }
+
+  /**
+   * Enhanced transaction monitoring with recovery
+   * Requirements: 7.4, 7.5, 9.5
+   */
+  public async monitorTransactionWithRecovery(
+    txHash: string,
+    originalTransaction: any,
+    timeoutMs: number = 300000,
+    confirmations: number = 1
+  ): Promise<{
+    receipt: any;
+    status: 'success' | 'failed' | 'timeout' | 'recovered';
+    confirmations: number;
+    gasUsed?: bigint;
+    recoveryAttempts?: number;
+  }> {
+    try {
+      const result = await this.monitorTransaction(txHash, timeoutMs, confirmations);
+      
+      if (result.status === 'success') {
+        return { ...result, recoveryAttempts: 0 };
+      }
+
+      // If transaction failed or timed out, add to recovery queue
+      if (result.status === 'failed' || result.status === 'timeout') {
+        const transactionId = `recovery_${txHash}`;
+        const error = new Error(`Transaction ${result.status}: ${txHash}`);
+        
+        this.addFailedTransactionForRecovery(transactionId, originalTransaction, error);
+        
+        return {
+          ...result,
+          status: result.status,
+          recoveryAttempts: 0
+        };
+      }
+
+      return result;
+
+    } catch (error) {
+      // Add to recovery queue on any monitoring error
+      const transactionId = `monitor_error_${txHash}`;
+      this.addFailedTransactionForRecovery(transactionId, originalTransaction, error as Error);
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Cleanup old error logs and recovery attempts
+   * Requirements: 7.5
+   */
+  public cleanup(maxAge: number = 24 * 60 * 60 * 1000): void {
+    this.errorHandler.clearOldLogs(maxAge);
+    this.recoveryManager.clearOldRecoveries(maxAge);
+  }
+
+  /**
+   * Health check with error handling metrics
+   * Requirements: 7.2, 7.5, 9.2, 9.5
+   */
+  public async healthCheckWithMetrics(): Promise<{
+    isConnected: boolean;
+    networkId: bigint | null;
+    blockNumber: bigint | null;
+    gasPrice: bigint | null;
+    congestionLevel: 'low' | 'medium' | 'high';
+    errorStats: ReturnType<BlockchainErrorHandler['getErrorStatistics']>;
+    recoveryStatus: ReturnType<TransactionRecoveryManager['getRecoveryStatus']>;
+    error?: string;
+  }> {
+    try {
+      const [isConnected, networkId, blockNumber, gasPrice, congestion] = await Promise.all([
+        this.isConnected(),
+        this.getNetworkId().catch(() => null),
+        this.getCurrentBlock().catch(() => null),
+        this.getGasPrice().catch(() => null),
+        this.getNetworkCongestion()
+      ]);
+
+      const errorStats = this.getErrorStatistics(60 * 60 * 1000); // Last hour
+      const recoveryStatus = this.getRecoveryStatus();
+
+      return {
+        isConnected,
+        networkId,
+        blockNumber,
+        gasPrice,
+        congestionLevel: congestion.level,
+        errorStats,
+        recoveryStatus
+      };
+
+    } catch (error) {
+      const errorStats = this.getErrorStatistics(60 * 60 * 1000);
+      const recoveryStatus = this.getRecoveryStatus();
+
+      return {
+        isConnected: false,
+        networkId: null,
+        blockNumber: null,
+        gasPrice: null,
+        congestionLevel: 'medium',
+        errorStats,
+        recoveryStatus,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
   }
 }
